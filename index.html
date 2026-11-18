@@ -238,6 +238,11 @@
       </div>
 
       <div class="blk">
+        <h2>도장 <span>끌어서 옮기고, 판 밖에 놓으면 지워져요</span></h2>
+        <div class="seg" id="fStamp"><button data-v="0" class="on">없음</button><button data-v="1">심볼</button><button data-v="2">타이포</button></div>
+      </div>
+
+      <div class="blk">
         <h2>글 <span style="display:flex;gap:4px"><button class="lk" id="toggleType" title="이 글을 페이지 위에 올릴지 말지">페이지에 얹기</button><button class="lk ghost" id="lockType" title="굴려도 안 바뀌게">잠금</button></span></h2>
         <p class="note">처음 문구는 고쳐 써도, 지워도 돼요.</p>
         <input class="tx" type="text" id="tTitle" placeholder="">
@@ -272,7 +277,6 @@
         <div class="row"><label>입자</label><input type="range" id="fGrain" min="0" max="100" value="28"><span class="v">28</span></div>
         <div class="row"><label>빛 번짐</label><input type="range" id="fBloom" min="0" max="100" value="20"><span class="v">20</span></div>
         <div class="row"><label>모서리 그늘</label><input type="range" id="fVig" min="0" max="100" value="0"><span class="v">0</span></div>
-        <div class="row"><label>도장</label><div class="seg" id="fStamp" style="flex:1"><button data-v="0" class="on">없음</button><button data-v="1">심볼</button><button data-v="2">타이포</button></div></div>
       </div>
 
     </div>
@@ -337,7 +341,7 @@ const libOf=hex=>INKLIB.find(c=>c.hex===hex)||{name:hex,hex};
 const PAL={paper:'#ffffff', ink:CFG.startInks.map(libOf), lock:false, open:-1};
 const PRE={bright:0,contrast:0,gamma:100};
 const TYPE={on:false,layout:1,size:100,color:0,under:0,lock:false};
-const FIN={grain:28,bloom:20,vig:0,stamp:0,lock:false};
+const FIN={grain:28,bloom:20,vig:0,stamp:0,sx:.86,sy:.9,lock:false};
 /* 판: 튕긴 낱말과 떨어뜨린 조각. 좌표는 전부 0~1 비율이라 내보내기 크기와 상관없다 */
 const PAGE={mode:0,pieces:[],words:[],wi:0};
 let history=[], future=[], captures=[];
@@ -667,12 +671,16 @@ function stampMark(sz,sd){const im=$('#brandSym'),c=mk(sz,sz),x=ctx2(c);if(!im.c
     let v=.92-Math.max(0,.42-blot)*2.2;if(spk<.07)v*=.15;                       // 잉크가 덜 묻은 자리 · 빠진 점
     a[i]=a[i+1]=a[i+2]=12;a[i+3]=clamp(v,0,1)*235;}
   x.putImageData(d,0,0);return c;}
+/* 도장 크기(가운데 기준). 끌기 판정과 그리기가 같은 상자를 쓴다 */
+function stampBox(W,H){if(FIN.stamp===1){const sz=Math.round(Math.min(W,H)*.11);return [sz,sz];}const w=W*.26;return [w,w*240/1633];}
+/* 끌 때 낱말·조각과 같은 꼴로 다루려고 x·y를 FIN.sx·sy에 잇는다 */
+const STAMP={get x(){return FIN.sx;},set x(v){FIN.sx=v;},get y(){return FIN.sy;},set y(v){FIN.sy=v;}};
 function drawStamp(ctx,W,H,k){
-  if(!FIN.stamp)return;const m=Math.min(W,H)*.035;ctx.save();
-  if(FIN.stamp===1){const sz=Math.round(Math.min(W,H)*.11),mk_=stampMark(sz,seed),a=((h2(5,9,seed)-.5)*.28);   // 찍을 때마다 살짝 기운다
-    ctx.translate(W-m-sz/2,H-m-sz/2);ctx.rotate(a);ctx.globalCompositeOperation='multiply';ctx.drawImage(mk_,-sz/2,-sz/2);}
+  if(!FIN.stamp)return;const [bw,bh]=stampBox(W,H),cx=FIN.sx*W,cy=FIN.sy*H;ctx.save();if(STAMP._del)ctx.globalAlpha=.3;
+  if(FIN.stamp===1){const mk_=stampMark(bw,seed),a=((h2(5,9,seed)-.5)*.28);   // 찍을 때마다 살짝 기운다
+    ctx.translate(cx,cy);ctx.rotate(a);ctx.globalCompositeOperation='multiply';ctx.drawImage(mk_,-bw/2,-bw/2);}
   else{if(!_wm)_wm=new Path2D($('.logo .wm path').getAttribute('d'));
-    const w=W*.26,sc=w/1633;ctx.translate(W-m-w,H-m-240*sc);ctx.scale(sc,sc);ctx.translate(0,240);ctx.scale(.1,-.1);   // 워드마크 원본 좌표(1633×240, potrace)
+    const sc=bw/1633;ctx.translate(cx-bw/2,cy-bh/2);ctx.scale(sc,sc);ctx.translate(0,240);ctx.scale(.1,-.1);   // 워드마크 원본 좌표(1633×240, potrace)
     ctx.fillStyle=ctx.strokeStyle=INK();ctx.lineWidth=70;ctx.lineJoin='round';ctx.fill(_wm);ctx.stroke(_wm);}
   ctx.restore();
 }
@@ -783,7 +791,7 @@ function extractPalette(image,K){const S=96,sc=Math.min(1,S/Math.max(image.width
   return cen.map(c=>{const [r,g,b]=c;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0;const f=1+sat*.6;const m=(r+g+b)/3;return hxs(m+(r-m)*f*1.3,m+(g-m)*f*1.3,m+(b-m)*f*1.3);});}
 
 /* ═══════════ 굴리기 (주사위) ═══════════ */
-function snapshot(){return JSON.stringify({chain:chain.map(s=>({type:s.type,params:s.params,on:s.on,lock:s.lock})),inks:PAL.ink.map(c=>c?c.hex:null),paper:PAL.paper,seed,TYPE:{on:TYPE.on,layout:TYPE.layout,size:TYPE.size,color:TYPE.color,under:TYPE.under},FIN:{grain:FIN.grain,bloom:FIN.bloom,vig:FIN.vig,stamp:FIN.stamp},PRE:{...PRE},PAGE:{mode:PAGE.mode,pieces:PAGE.pieces,words:PAGE.words}});}
+function snapshot(){return JSON.stringify({chain:chain.map(s=>({type:s.type,params:s.params,on:s.on,lock:s.lock})),inks:PAL.ink.map(c=>c?c.hex:null),paper:PAL.paper,seed,TYPE:{on:TYPE.on,layout:TYPE.layout,size:TYPE.size,color:TYPE.color,under:TYPE.under},FIN:{grain:FIN.grain,bloom:FIN.bloom,vig:FIN.vig,stamp:FIN.stamp,sx:FIN.sx,sy:FIN.sy},PRE:{...PRE},PAGE:{mode:PAGE.mode,pieces:PAGE.pieces,words:PAGE.words}});}
 function restore(json,keepLocks){const S=typeof json==='string'?JSON.parse(json):json;
   chain=S.chain.map(s=>({id:++uid,type:s.type,params:Object.assign({},FX[s.type]?FX[s.type].d:{},s.params),on:s.on!==false,lock:!!s.lock})).filter(s=>FX[s.type]);
   if(S.inks&&typeof S.inks[0]!=='number')PAL.ink=[0,1,2].map(i=>S.inks[i]?libOf(S.inks[i]):null);if(S.paper)PAL.paper=S.paper;if(S.seed!=null)seed=S.seed;
@@ -958,6 +966,7 @@ function dropPiece(){if(!img)return toast('사진을 먼저 넣어주세요');
 /* 화면 끌기: 붙은 조각·낱말을 잡으면 옮기고, 빈 자리를 끌어 놓으면 그 방향으로 낱말이 튕긴다 */
 function hitPage(x,y){const W=out.width,H=out.height;
   const inBox=(cx,cy,rot,w,h)=>{const dx=x-cx,dy=y-cy,c=Math.cos(-rot),s=Math.sin(-rot);return Math.abs(dx*c-dy*s)<=w/2&&Math.abs(dx*s+dy*c)<=h/2;};
+  if(FIN.stamp){const [bw,bh]=stampBox(W,H);if(inBox(FIN.sx*W,FIN.sy*H,0,bw,bh))return{stamp:true};}   // 도장이 맨 위에 찍힌다
   for(let i=PAGE.words.length-1;i>=0;i--){const wd=PAGE.words[i],sz=wd.sz*W;octx.font=wordFont(Math.round(sz));
     if(inBox(wd.x*W,wd.y*H,wd.rot,octx.measureText(wd.t).width+sz*.3,sz*1.3))return{list:PAGE.words,i};}
   for(let i=PAGE.pieces.length-1;i>=0;i--){const p=PAGE.pieces[i],[w,h]=pieceBox(p,W,H);if(inBox(p.x*W,p.y*H,p.rot,w,h))return{list:PAGE.pieces,i};}
@@ -967,7 +976,7 @@ function hitPage(x,y){const W=out.width,H=out.height;
   const say=(e,t)=>{if(!t){tip.hidden=true;return;}const r=wc.getBoundingClientRect();tip.textContent=t;tip.hidden=false;   // 커서 옆을 따라다니는 짧은 안내
     tip.style.left=clamp(e.clientX-r.left+14,0,r.width-tip.offsetWidth)+'px';tip.style.top=clamp(e.clientY-r.top+16,-30,r.height+8)+'px';};
   wc.addEventListener('pointerdown',e=>{if(!img||e.button)return;const p=pt(e),h=hitPage(p[0],p[1]);if(!h)return;
-    finishAnim();wc.setPointerCapture(e.pointerId);const o=h.list.splice(h.i,1)[0];h.list.push(o);   // 잡은 것을 맨 위로
+    finishAnim();wc.setPointerCapture(e.pointerId);let o=STAMP;if(!h.stamp){o=h.list.splice(h.i,1)[0];h.list.push(o);}   // 잡은 것을 맨 위로
     grab={o,dx:o.x*out.width-p[0],dy:o.y*out.height-p[1],moved:false,before:snapshot()};wc.style.cursor='grabbing';say(e,'판 밖에 놓으면 지워져요');render();});
   wc.addEventListener('pointermove',e=>{const p=pt(e);
     if(grab){if(!grab.moved){history.push(grab.before);if(history.length>30)history.shift();future=[];grab.moved=true;}
@@ -978,7 +987,8 @@ function hitPage(x,y){const W=out.width,H=out.height;
     const over=img&&e.pointerType==='mouse'&&hitPage(p[0],p[1]);wc.style.cursor=over?'grab':'';say(e,over?'끌어서 옮겨요':'');});
   wc.addEventListener('pointerleave',()=>{if(!grab)tip.hidden=true;});
   const drop=()=>{const g=grab;grab=null;wc.style.cursor='';wc.classList.remove('trash');tip.hidden=true;if(!g)return;
-    if(g.o._del){delete g.o._del;for(const L of [PAGE.words,PAGE.pieces]){const i=L.indexOf(g.o);if(i>=0)L.splice(i,1);}renderSoon();toast('지웠어요 · ⌘Z로 되돌리기');}};
+    if(g.o._del){delete g.o._del;if(g.o===STAMP){FIN.stamp=0;FIN.sx=.86;FIN.sy=.9;syncUI();}   // 도장은 끄고 자리는 처음으로
+      for(const L of [PAGE.words,PAGE.pieces]){const i=L.indexOf(g.o);if(i>=0)L.splice(i,1);}renderSoon();toast('지웠어요 · ⌘Z로 되돌리기');}};
   wc.addEventListener('pointercancel',()=>{if(grab){delete grab.o._del;drop();}});
   wc.addEventListener('pointerup',()=>{if(grab)drop();});
 })();
