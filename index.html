@@ -423,6 +423,7 @@ function boxBlur(f,W,H,r){r=Math.max(1,r|0);const t=new Float32Array(f.length),n
   for(let x=0;x<W;x++){let s=0;for(let y=-r;y<=r;y++)s+=t[clamp(y,0,H-1)*W+x];
     for(let y=0;y<H;y++){f[y*W+x]=s/n;s+=t[Math.min(H-1,y+r+1)*W+x]-t[Math.max(0,y-r)*W+x];}}
   return f;}
+function pctl(g,q){const h=new Uint32Array(256);for(let i=0;i<g.length;i+=3)h[clamp(g[i]|0,0,255)]++;const n=Math.ceil(g.length/3)*q;let c=0;for(let v=0;v<256;v++){c+=h[v];if(c>=n)return v;}return 255;}
 function smooth01(a,b,v){const t=clamp((v-a)/Math.max(1e-6,b-a),0,1);return t*t*(3-2*t);}
 
 /* ── 비틀기 ── */
@@ -544,7 +545,7 @@ FX.sil={label:'실루엣',hint:'잉크 1 덩어리로',d:{th:50,soft:8,halo:40,b
  run(src,p,ctx,env){const {W,H}=env,g=grayData(src),o=ctx.createImageData(W,H),a=o.data;
   boxBlur(g,W,H,Math.max(1,W*.004));
   const ink2=onInks()[1],B=toRGB(INK()),Lc=toRGB(p.bg&&ink2?ink2.hex:PAPER()),    // 덩어리 = 잉크 1, 바탕 = 종이 또는 잉크 2
-  th=p.th/100*255,sf=p.soft/100*255+1,m=new Float32Array(W*H);
+  th=pctl(g,p.th/100),sf=p.soft/100*255+1,m=new Float32Array(W*H);   // 경계 = 사진 밝기 분포의 백분위. 어두운 사진도 반은 덩어리, 반은 바탕
   for(let i=0;i<m.length;i++){let v=smooth01(th-sf,th+sf,g[i]);m[i]=p.inv?1-v:v;}
   let hm=null;if(p.halo){hm=Float32Array.from(m);const r=W*.025;boxBlur(hm,W,H,r);boxBlur(hm,W,H,r);boxBlur(hm,W,H,r);}
   for(let i=0;i<m.length;i++){const v=hm?Math.min(1,Math.max(m[i],hm[i]*p.halo/100*1.4)):m[i],c=mixRGB(B,Lc,v);a[i*4]=c[0];a[i*4+1]=c[1];a[i*4+2]=c[2];a[i*4+3]=255;}
