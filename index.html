@@ -344,7 +344,7 @@ const libOf=hex=>INKLIB.find(c=>c.hex===hex)||{name:hex,hex};
 const PAL={paper:'#ffffff', ink:CFG.startInks.map(libOf), lock:false, open:-1};
 const PRE={bright:0,contrast:0,gamma:100};
 const TYPE={on:false,layout:1,size:100,color:0,under:0,lock:false};
-const FIN={grain:28,bloom:20,vig:0,stamp:0,sx:.86,sy:.9,lock:false};
+const FIN={grain:28,bloom:20,vig:0,stamp:0,sx:.86,sy:.9,ss:1,lock:false};
 /* 판: 튕긴 낱말과 떨어뜨린 조각. 좌표는 전부 0~1 비율이라 내보내기 크기와 상관없다 */
 const PAGE={mode:0,pieces:[],words:[],wi:0};
 let history=[], future=[], captures=[];
@@ -675,7 +675,7 @@ function stampMark(sz,sd){const im=$('#brandSym'),c=mk(sz,sz),x=ctx2(c);if(!im.c
     a[i]=a[i+1]=a[i+2]=12;a[i+3]=clamp(v,0,1)*235;}
   x.putImageData(d,0,0);return c;}
 /* 도장 크기(가운데 기준). 끌기 판정과 그리기가 같은 상자를 쓴다 */
-function stampBox(W,H){if(FIN.stamp===1){const sz=Math.round(Math.min(W,H)*.11);return [sz,sz];}const w=W*.26;return [w,w*240/1633];}
+function stampBox(W,H){const k=FIN.ss||1;if(FIN.stamp===1){const sz=Math.round(Math.min(W,H)*.11*k);return [sz,sz];}const w=W*.26*k;return [w,w*240/1633];}   // ss = 크기 배율
 /* 끌 때 낱말·조각과 같은 꼴로 다루려고 x·y를 FIN.sx·sy에 잇는다 */
 const STAMP={get x(){return FIN.sx;},set x(v){FIN.sx=v;},get y(){return FIN.sy;},set y(v){FIN.sy=v;}};
 function drawStamp(ctx,W,H,k){
@@ -794,7 +794,7 @@ function extractPalette(image,K){const S=96,sc=Math.min(1,S/Math.max(image.width
   return cen.map(c=>{const [r,g,b]=c;const mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0;const f=1+sat*.6;const m=(r+g+b)/3;return hxs(m+(r-m)*f*1.3,m+(g-m)*f*1.3,m+(b-m)*f*1.3);});}
 
 /* ═══════════ 굴리기 (주사위) ═══════════ */
-function snapshot(){return JSON.stringify({chain:chain.map(s=>({type:s.type,params:s.params,on:s.on,lock:s.lock})),inks:PAL.ink.map(c=>c?c.hex:null),paper:PAL.paper,seed,TYPE:{on:TYPE.on,layout:TYPE.layout,size:TYPE.size,color:TYPE.color,under:TYPE.under},FIN:{grain:FIN.grain,bloom:FIN.bloom,vig:FIN.vig,stamp:FIN.stamp,sx:FIN.sx,sy:FIN.sy},PRE:{...PRE},PAGE:{mode:PAGE.mode,pieces:PAGE.pieces,words:PAGE.words}});}
+function snapshot(){return JSON.stringify({chain:chain.map(s=>({type:s.type,params:s.params,on:s.on,lock:s.lock})),inks:PAL.ink.map(c=>c?c.hex:null),paper:PAL.paper,seed,TYPE:{on:TYPE.on,layout:TYPE.layout,size:TYPE.size,color:TYPE.color,under:TYPE.under},FIN:{grain:FIN.grain,bloom:FIN.bloom,vig:FIN.vig,stamp:FIN.stamp,sx:FIN.sx,sy:FIN.sy,ss:FIN.ss},PRE:{...PRE},PAGE:{mode:PAGE.mode,pieces:PAGE.pieces,words:PAGE.words}});}
 function restore(json,keepLocks){const S=typeof json==='string'?JSON.parse(json):json;
   const si=Math.max(0,chain.findIndex(q=>q.id===sel));                       // 고르고 있던 자리를 지킨다
   chain=S.chain.map(s=>({id:++uid,type:s.type,params:Object.assign({},FX[s.type]?FX[s.type].d:{},s.params),on:s.on!==false,lock:!!s.lock})).filter(s=>FX[s.type]);
@@ -982,32 +982,34 @@ function hitPage(x,y){const W=out.width,H=out.height;
   wc.addEventListener('pointerdown',e=>{if(!img||e.button)return;const p=pt(e),h=hitPage(p[0],p[1]);if(!h)return;
     finishAnim();wc.setPointerCapture(e.pointerId);let o=STAMP;if(!h.stamp){o=h.list.splice(h.i,1)[0];h.list.push(o);}   // 잡은 것을 맨 위로
     grab={o,dx:o.x*out.width-p[0],dy:o.y*out.height-p[1],moved:false,before:snapshot(),sx:e.clientX,sy:e.clientY};wc.style.cursor='grabbing';say(e,'판 밖에 놓으면 지워져요');render();
-    if(e.pointerType!=='mouse'&&h.list===PAGE.words)grab.lp=setTimeout(()=>{if(grab&&!grab.moved){const w_=grab.o;drop();openSize(w_,e.clientX,e.clientY);}},550);});   // 휴대폰: 길게 누르면 크기
+    if(e.pointerType!=='mouse'&&(h.stamp||h.list===PAGE.words))grab.lp=setTimeout(()=>{if(grab&&!grab.moved){const t_=sizeTarget(grab.o);drop();openSize(t_,e.clientX,e.clientY);}},550);});   // 휴대폰: 길게 누르면 크기
   wc.addEventListener('pointermove',e=>{const p=pt(e);
     if(grab){if(!grab.moved){if(Math.hypot(e.clientX-grab.sx,e.clientY-grab.sy)<4)return;clearTimeout(grab.lp);history.push(grab.before);if(history.length>30)history.shift();future=[];grab.moved=true;}
       const outside=p[0]<0||p[1]<0||p[0]>out.width||p[1]>out.height;              // 손가락(커서)이 판 밖이면 놓을 때 지운다
       if(outside!==!!grab.o._del){grab.o._del=outside;wc.classList.toggle('trash',outside);}
       say(e,outside?'놓으면 지워져요':'판 밖에 놓으면 지워져요');
       grab.o.x=clamp((p[0]+grab.dx)/out.width,0,1);grab.o.y=clamp((p[1]+grab.dy)/out.height,0,1);render();return;}
-    const over=img&&e.pointerType==='mouse'&&hitPage(p[0],p[1]);wc.style.cursor=over?'grab':'';say(e,over?(over.list===PAGE.words?'끌어서 옮겨요 · 우클릭하면 크기':'끌어서 옮겨요'):'');});
+    const over=img&&e.pointerType==='mouse'&&hitPage(p[0],p[1]);wc.style.cursor=over?'grab':'';say(e,over?(over.stamp||over.list===PAGE.words?'끌어서 옮겨요 · 우클릭하면 크기':'끌어서 옮겨요'):'');});
   wc.addEventListener('pointerleave',()=>{if(!grab)tip.hidden=true;});
   const drop=()=>{const g=grab;grab=null;if(g)clearTimeout(g.lp);wc.style.cursor='';wc.classList.remove('trash');tip.hidden=true;if(!g)return;
-    if(g.o._del){delete g.o._del;if(g.o===STAMP){FIN.stamp=0;FIN.sx=.86;FIN.sy=.9;syncUI();}   // 도장은 끄고 자리는 처음으로
+    if(g.o._del){delete g.o._del;if(g.o===STAMP){FIN.stamp=0;FIN.sx=.86;FIN.sy=.9;FIN.ss=1;syncUI();}   // 도장은 끄고 자리·크기는 처음으로
       for(const L of [PAGE.words,PAGE.pieces]){const i=L.indexOf(g.o);if(i>=0)L.splice(i,1);}renderSoon();toast('지웠어요 · ⌘Z로 되돌리기');}};
   wc.addEventListener('pointercancel',()=>{if(grab){delete grab.o._del;drop();}});
   wc.addEventListener('pointerup',()=>{if(grab)drop();});
   // 우클릭: 낱말 위면 커서 옆에 크기 패널
-  wc.addEventListener('contextmenu',e=>{if(!img)return;const p=pt(e),h=hitPage(p[0],p[1]);if(!h||h.list!==PAGE.words)return;
-    e.preventDefault();tip.hidden=true;finishAnim();openSize(h.list[h.i],e.clientX,e.clientY);});
+  wc.addEventListener('contextmenu',e=>{if(!img)return;const p=pt(e),h=hitPage(p[0],p[1]);if(!h||!(h.stamp||h.list===PAGE.words))return;
+    e.preventDefault();tip.hidden=true;finishAnim();openSize(sizeTarget(h.stamp?STAMP:h.list[h.i]),e.clientX,e.clientY);});
 })();
 /* 낱말 크기 패널. 커서 옆에 뜨고, 바깥을 누르거나 Esc면 닫힌다. 처음 움직일 때 한 번만 되돌리기에 쌓는다 */
 let szT=null,szBefore=null,szPushed=false;
-function openSize(wd,cx,cy){const P=$('#sizePop'),r=$('#szRange');szT=wd;szBefore=snapshot();szPushed=false;
-  r.value=Math.round(wd.sz*1000);$('#szVal').textContent=r.value;P.hidden=false;
+function sizeTarget(o){return o===STAMP?{label:'도장 크기',min:40,max:250,get:()=>Math.round((FIN.ss||1)*100),set:v=>{FIN.ss=v/100;}}   // 100 = 처음 크기
+  :{label:'글자 크기',min:20,max:160,get:()=>Math.round(o.sz*1000),set:v=>{o.sz=v/1000;}};}
+function openSize(t,cx,cy){const P=$('#sizePop'),r=$('#szRange');szT=t;szBefore=snapshot();szPushed=false;
+  $('#sizePop label').textContent=t.label;r.min=t.min;r.max=t.max;r.value=t.get();$('#szVal').textContent=r.value;P.hidden=false;
   P.style.left=clamp(cx+12,8,innerWidth-P.offsetWidth-8)+'px';P.style.top=clamp(cy+12,8,innerHeight-P.offsetHeight-8)+'px';setTimeout(()=>r.focus(),0);}
 function closeSize(){$('#sizePop').hidden=true;szT=null;}
 $('#szRange').addEventListener('input',()=>{if(!szT)return;if(!szPushed){history.push(szBefore);if(history.length>30)history.shift();future=[];szPushed=true;}
-  szT.sz=+$('#szRange').value/1000;$('#szVal').textContent=$('#szRange').value;render();});
+  szT.set(+$('#szRange').value);$('#szVal').textContent=$('#szRange').value;render();});
 document.addEventListener('pointerdown',e=>{if(szT&&!$('#sizePop').contains(e.target))closeSize();},true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&szT)closeSize();});
 
